@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 .DS_Store
+.claude/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -12,3 +13,10 @@ htmlcov/
 venv/
 env/
 *.log
+domainprobe_session.json
+domainprobe_session.csv
+report_*.txt
+audit_*.txt
+audit_*.json
+diagnose_*.txt
+diagnose_*.json
