@@ -179,10 +179,18 @@ def ticket_summary(domain=None):
     console.print(Panel(report, border_style="cyan", padding=(0,1)))
 
     if Confirm.ask("\n  [cyan]Save report to file?[/cyan]", default=True):
+        from pathlib import Path
         ts  = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        fn  = Prompt.ask("  [cyan]Filename[/cyan]", default=f"report_{domain}_{ts}.txt")
-        with open(fn, "w", encoding="utf-8") as f: f.write(report)
-        ok(f"Saved → [bold]{fn}[/bold]")
+        default_path = str(Path.home() / f"report_{domain}_{ts}.txt")
+        fn  = Prompt.ask("  [cyan]Filename[/cyan]", default=default_path)
+        try:
+            with open(fn, "w", encoding="utf-8") as f: f.write(report)
+            ok(f"Saved → [bold]{fn}[/bold]")
+        except PermissionError:
+            err(f"Permission denied: cannot write to [bold]{fn}[/bold]")
+            info("Try entering a path you own, e.g. your Desktop or home folder.")
+        except OSError as e:
+            err(f"Could not write file: {e}")
 
     session.store("ticket_summary", domain, {"issues": issues, "recs": recs})
     return report

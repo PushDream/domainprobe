@@ -76,17 +76,26 @@ def bulk_lookup():
 
 # ── Export session ────────────────────────────────────────────────────────────
 def export_menu():
+    from pathlib import Path
     section("Export Session Results")
     if session.count() == 0:
         warn("No results in this session yet."); return
 
     info(f"{session.count()} result(s) stored this session.")
     fmt = Prompt.ask("  [cyan]Format[/cyan]", choices=["json","csv"], default="json")
-    fn  = Prompt.ask("  [cyan]Filename[/cyan]", default=f"domainprobe_session.{fmt}")
 
-    if fmt == "json":  session.export_json(fn)
-    else:              session.export_csv(fn)
-    ok(f"Exported → [bold]{fn}[/bold]")
+    default_path = str(Path.home() / f"domainprobe_session.{fmt}")
+    fn = Prompt.ask("  [cyan]Filename[/cyan]", default=default_path)
+
+    try:
+        if fmt == "json":  session.export_json(fn)
+        else:              session.export_csv(fn)
+        ok(f"Exported → [bold]{fn}[/bold]")
+    except PermissionError:
+        err(f"Permission denied: cannot write to [bold]{fn}[/bold]")
+        info("Try entering a path you own, e.g. your Desktop or home folder.")
+    except OSError as e:
+        err(f"Could not write file: {e}")
 
 # ── Menu definition ───────────────────────────────────────────────────────────
 ADVANCED_MENU_ITEMS = [
