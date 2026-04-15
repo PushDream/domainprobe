@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-DomainProbe v2.0
-Advanced DNS & Domain Intelligence Platform
-Tier 2 DNS / Domain Technical Support
+Owusu DomainProbe
+Operator-focused DNS, web, mail, and registrar diagnostics
 """
 
 import argparse
-import sys, os
+import sys
 
 # ── Dependency pre-check ──────────────────────────────────────────────────────
 DEPS = [("dnspython","dns"), ("python-whois","whois"),
@@ -20,13 +19,10 @@ if MISSING:
     sys.exit(1)
 
 # ── Module imports ─────────────────────────────────────────────────────────────
-from rich.console  import Console
-from rich.panel    import Panel
-from rich.table    import Table
 from rich.prompt   import Prompt, Confirm
-from rich          import box
 
 from modules.display      import console, banner, section, ok, warn, err, info, press_enter
+from modules.meta         import APP_NAME, APP_TAGLINE, APP_VERSION, app_label
 from modules              import session
 from modules.audit_engine import actionable_audit, render_audit_text, run_actionable_audit, save_audit_report, should_fail
 from modules.diagnose     import diagnose_domain, diagnose_website, diagnose_email, render_domain_diagnosis_text, render_website_diagnosis_text, render_email_diagnosis_text, run_domain_diagnosis, run_website_diagnosis, run_email_diagnosis, save_diagnosis_report
@@ -207,7 +203,7 @@ def print_main_menu():
 # ── CLI mode ──────────────────────────────────────────────────────────────────
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="DomainProbe v2.0 — DNS, mail, and domain diagnostics"
+        description=f"{app_label()} — {APP_TAGLINE}"
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -382,7 +378,7 @@ def main(argv=None):
             if session.count() > 0:
                 if Confirm.ask(f"  [cyan]Export {session.count()} session result(s) before exiting?[/cyan]", default=False):
                     export_menu()
-            console.print("\n  [dim]DomainProbe v2.0 — goodbye.[/dim]\n")
+            console.print(f"\n  [dim]{APP_NAME} v{APP_VERSION} — goodbye.[/dim]\n")
             return 0
 
         fn = MAIN_DISPATCH.get(choice)

@@ -16,6 +16,7 @@ from . import session
 from .display import console, get_domain, info, ok, section, Spinner, warn
 from .dns_core import RESOLVERS, resolve_safe
 from .email_suite import collect_mx, collect_spf, collect_dmarc, collect_dkim, collect_rbl
+from .meta import APP_USER_AGENT
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 CONFIDENCE_LABEL = {"high": "Confirmed", "medium": "Likely", "unknown": "Insufficient Evidence"}
@@ -291,7 +292,7 @@ def _fetch_url(url):
             url,
             allow_redirects=True,
             timeout=10,
-            headers={"User-Agent": "DomainProbe/2.0"},
+            headers={"User-Agent": APP_USER_AGENT},
         )
         return {
             "url": url,
@@ -314,7 +315,7 @@ def _fetch_url(url):
                 url,
                 allow_redirects=True,
                 timeout=10,
-                headers={"User-Agent": "DomainProbe/2.0"},
+                headers={"User-Agent": APP_USER_AGENT},
             )
             return {
                 "url": url,

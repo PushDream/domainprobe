@@ -16,6 +16,7 @@ from rich.panel  import Panel
 from rich.prompt import Prompt, Confirm
 from rich import box
 from .display import console, section, ok, warn, err, info, get_domain, days_label, score_to_grade, grade_color, Spinner
+from .meta    import APP_USER_AGENT
 from .dns_core  import resolve_safe
 from . import session
 
@@ -207,7 +208,7 @@ def redirect_chain(domain=None):
 
     try:
         resp = requests.get(start, allow_redirects=True, timeout=15,
-                            headers={"User-Agent":"DomainProbe/2.0"})
+                            headers={"User-Agent": APP_USER_AGENT})
         history = resp.history + [resp]
 
         prev_scheme = None

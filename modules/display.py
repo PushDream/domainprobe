@@ -2,20 +2,21 @@
 import datetime
 from rich.console import Console
 from rich.panel   import Panel
-from rich.table   import Table
-from rich.prompt  import Prompt, Confirm
+from rich.prompt  import Prompt
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import box
+
+from .meta import APP_NAME, APP_SUBTITLE, APP_TAGLINE, APP_VERSION
 
 console = Console()
 
 # ── Layout helpers ────────────────────────────────────────────────────────────
 def banner():
     console.print(Panel.fit(
-        "[bold cyan]DomainProbe[/bold cyan] [yellow]v2.0[/yellow]\n"
-        "[dim]Advanced DNS & Domain Intelligence Platform[/dim]\n"
-        "[dim]Tier 2 DNS / Domain Technical Support[/dim]",
-        border_style="cyan", padding=(0, 2)
+        f"[bold cyan]{APP_NAME}[/bold cyan] [yellow]v{APP_VERSION}[/yellow]\n"
+        f"[white]{APP_TAGLINE}[/white]\n"
+        f"[dim]{APP_SUBTITLE}[/dim]",
+        border_style="cyan",
+        padding=(0, 2),
     ))
 
 def section(title):

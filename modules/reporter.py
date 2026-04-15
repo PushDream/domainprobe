@@ -15,6 +15,7 @@ from rich        import box
 from rich.prompt import Prompt, Confirm
 from .display    import console, section, ok, warn, err, info, get_domain, days_label, Spinner
 from .dns_core   import resolve_safe
+from .meta       import app_label
 from . import session
 
 # ── Ticket Summary Generator ──────────────────────────────────────────────────
@@ -30,7 +31,7 @@ def ticket_summary(domain=None):
 
     add("=" * 68)
     add("  DOMAIN SUPPORT / INCIDENT REPORT")
-    add(f"  Tool: DomainProbe v2.0   Generated: {now_str}")
+    add(f"  Tool: {app_label()}   Generated: {now_str}")
     add("=" * 68)
     add()
     add(f"  DOMAIN:    {domain.upper()}")
