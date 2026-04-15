@@ -29,7 +29,7 @@ from rich          import box
 from modules.display      import console, banner, section, ok, warn, err, info, press_enter
 from modules              import session
 from modules.audit_engine import actionable_audit, render_audit_text, run_actionable_audit, save_audit_report, should_fail
-from modules.diagnose     import diagnose_domain, diagnose_website, render_domain_diagnosis_text, render_website_diagnosis_text, run_domain_diagnosis, run_website_diagnosis, save_diagnosis_report
+from modules.diagnose     import diagnose_domain, diagnose_website, diagnose_email, render_domain_diagnosis_text, render_website_diagnosis_text, render_email_diagnosis_text, run_domain_diagnosis, run_website_diagnosis, run_email_diagnosis, save_diagnosis_report
 from modules.dns_core     import dns_lookup, propagation_check, ns_consistency_check, cname_ttl_analyzer
 from modules.whois_rdap   import whois_lookup, rdap_lookup, epp_decoder
 from modules.email_suite  import spf_analyzer, dmarc_inspector, dkim_prober, mx_validator, rbl_checker
@@ -137,9 +137,10 @@ REPORT_MENU_ITEMS = [
 MAIN_MENU_ITEMS = [
     ("1", "Diagnose Domain",                       diagnose_domain),
     ("2", "Diagnose Website",                      diagnose_website),
-    ("3", "Transfer Diagnosis",                    transfer_eligibility),
-    ("4", "Advanced Tools",                        "advanced"),
-    ("5", "Reports / Export",                      "reports"),
+    ("3", "Diagnose Email",                        diagnose_email),
+    ("4", "Transfer Diagnosis",                    transfer_eligibility),
+    ("5", "Advanced Tools",                        "advanced"),
+    ("6", "Reports / Export",                      "reports"),
     ("0", "Exit",                                  None),
 ]
 
@@ -187,9 +188,10 @@ def reports_menu():
 MAIN_DISPATCH = {
     "1": diagnose_domain,
     "2": diagnose_website,
-    "3": transfer_eligibility,
-    "4": advanced_menu,
-    "5": reports_menu,
+    "3": diagnose_email,
+    "4": transfer_eligibility,
+    "5": advanced_menu,
+    "6": reports_menu,
 }
 
 def print_main_menu():
@@ -247,6 +249,28 @@ def build_parser():
         help="Write the diagnosis report to a file instead of stdout",
     )
     website_parser.add_argument(
+        "--fail-on",
+        choices=["never", "critical", "high", "medium", "low"],
+        default="never",
+        help="Exit with code 2 if a finding at or above this severity is present",
+    )
+
+    email_parser = subparsers.add_parser(
+        "diagnose-email",
+        help="Run the flagship email deliverability diagnosis flow",
+    )
+    email_parser.add_argument("domain", help="Domain name to diagnose")
+    email_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format for stdout or --output",
+    )
+    email_parser.add_argument(
+        "--output",
+        help="Write the diagnosis report to a file instead of stdout",
+    )
+    email_parser.add_argument(
         "--fail-on",
         choices=["never", "critical", "high", "medium", "low"],
         default="never",
@@ -311,6 +335,19 @@ def run_cli(argv):
 
         return 2 if should_fail(report["findings"], args.fail_on) else 0
 
+    if args.command == "diagnose-email":
+        report = run_email_diagnosis(args.domain)
+        if args.output:
+            save_diagnosis_report(report, args.output, args.format, render_email_diagnosis_text)
+            print(f"Saved {args.format} diagnosis report to {args.output}")
+        elif args.format == "json":
+            import json
+            print(json.dumps(report, indent=2, default=str))
+        else:
+            print(render_email_diagnosis_text(report))
+
+        return 2 if should_fail(report["findings"], args.fail_on) else 0
+
     if args.command == "audit":
         audit = run_actionable_audit(args.domain)
         if args.output:
@@ -355,7 +392,7 @@ def main(argv=None):
 
         try:
             fn()
-            if choice in ("4", "5"):
+            if choice in ("5", "6"):
                 continue
         except KeyboardInterrupt:
             console.print()

@@ -6,6 +6,7 @@ Email Deliverability Suite
 • DKIM selector prober — 28 selectors, key type & length detection
 • MX validator — priority, reachability (port 25/587), reverse DNS
 • RBL / blacklist checker — 18 DNSBLs in parallel
+• Quiet data collectors (collect_*) — used by the Diagnose Email flagship flow
 """
 
 import re, socket, concurrent.futures
@@ -404,3 +405,165 @@ def rbl_checker(domain=None):
     result = {"ip": ip, "listed": [z for z,_ in listed], "clean": len(clean)}
     session.store("rbl", domain, result)
     return result
+
+
+# ── Quiet data collectors (used by Diagnose Email flagship) ───────────────────
+
+def collect_spf(domain):
+    """Return parsed SPF data without printing to the console."""
+    ips, lookup_count, record_or_status, warnings = _spf_recurse(domain)
+    has_record = "no-spf" not in str(record_or_status)
+    all_directive = None
+    if has_record:
+        m = re.search(r'([+\-?~]?all)\b', record_or_status)
+        all_directive = m.group(1) if m else None
+    return {
+        "has_record": has_record,
+        "record": record_or_status if has_record else None,
+        "lookup_count": lookup_count,
+        "all_directive": all_directive,
+        "ip_count": len(ips),
+        "warnings": warnings,
+    }
+
+
+def collect_dmarc(domain):
+    """Return parsed DMARC data without printing to the console."""
+    vals, _, _ = resolve_safe(f"_dmarc.{domain}", "TXT")
+    dmarc = next((v.strip('"') for v in vals if "v=DMARC1" in v.strip('"')), None)
+    if not dmarc:
+        return {"has_record": False, "record": None}
+    tags = {}
+    for part in dmarc.split(";"):
+        part = part.strip()
+        if "=" in part:
+            k, _, v = part.partition("=")
+            tags[k.strip()] = v.strip()
+    p = tags.get("p", "none")
+    return {
+        "has_record": True,
+        "record": dmarc,
+        "policy": p,
+        "subdomain_policy": tags.get("sp", p),
+        "pct": tags.get("pct", "100"),
+        "rua": tags.get("rua", ""),
+        "ruf": tags.get("ruf", ""),
+        "adkim": tags.get("adkim", "r"),
+        "aspf": tags.get("aspf", "r"),
+    }
+
+
+def collect_dkim(domain):
+    """Return DKIM selector probe results without printing to the console."""
+    def check(sel):
+        vals, _, status = resolve_safe(f"{sel}._domainkey.{domain}", "TXT", timeout=4)
+        if status == "ok" and vals:
+            for v in vals:
+                c = v.strip('"')
+                if "v=DKIM1" in c or "p=" in c:
+                    return sel, c, True
+        return sel, None, False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=14) as ex:
+        raw = list(ex.map(check, DKIM_SELECTORS))
+
+    found = []
+    for sel, val, hit in raw:
+        if not hit:
+            continue
+        key_type = "Ed25519" if "k=ed25519" in val else "RSA"
+        key_length = "unknown"
+        weak = False
+        if key_type == "Ed25519":
+            key_length = "256-bit"
+        else:
+            pm = re.search(r'p=([A-Za-z0-9+/=]+)', val)
+            if pm:
+                b = len(pm.group(1)) * 3 / 4
+                if b > 400:
+                    key_length = "4096-bit"
+                elif b > 200:
+                    key_length = "2048-bit"
+                elif b > 100:
+                    key_length = "1024-bit"
+                    weak = True
+                else:
+                    key_length = "<1024-bit"
+                    weak = True
+        found.append({"selector": sel, "key_type": key_type, "key_length": key_length, "weak": weak})
+
+    return {"found": found}
+
+
+def collect_mx(domain):
+    """Return MX reachability data without printing to the console."""
+    mx_vals, _, mx_status = resolve_safe(domain, "MX")
+    if mx_status != "ok" or not mx_vals:
+        return {"has_records": False, "records": [], "status": mx_status}
+
+    mx_records = sorted(
+        [(int(v.split()[0]), v.split()[1].rstrip(".")) for v in mx_vals if len(v.split()) >= 2]
+    )
+
+    def check_mx(item):
+        priority, host = item
+        try:
+            ip = socket.gethostbyname(host)
+        except Exception:
+            return {"priority": priority, "host": host, "ip": None,
+                    "port25": False, "port587": False, "rdns": None}
+
+        def port_open(port):
+            try:
+                s = socket.socket()
+                s.settimeout(4)
+                result = s.connect_ex((ip, port))
+                s.close()
+                return result == 0
+            except Exception:
+                return False
+
+        p25 = port_open(25)
+        p587 = port_open(587)
+        try:
+            rdns = socket.gethostbyaddr(ip)[0]
+        except Exception:
+            rdns = None
+        return {"priority": priority, "host": host, "ip": ip,
+                "port25": p25, "port587": p587, "rdns": rdns}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        records = list(ex.map(check_mx, mx_records))
+
+    return {"has_records": True, "records": records}
+
+
+def collect_rbl(ips):
+    """Return RBL blacklist results for a list of IPs without printing to the console."""
+    def check_ip(ip):
+        parts = ip.split(".")
+        if len(parts) != 4:
+            return ip, []
+        rev = ".".join(reversed(parts))
+
+        def check_zone(zone):
+            r = dns.resolver.Resolver(configure=False)
+            r.nameservers = ["8.8.8.8", "8.8.4.4"]
+            r.lifetime = 4
+            try:
+                r.resolve(f"{rev}.{zone}", "A")
+                return zone
+            except Exception:
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=18) as ex:
+            results = list(ex.map(check_zone, RBL_ZONES))
+        return ip, [z for z in results if z]
+
+    listed = []
+    for ip in ips:
+        _ip, hits = check_ip(ip)
+        if hits:
+            listed.append({"ip": _ip, "listed_on": hits})
+
+    return {"listed": listed, "checked_ips": len(ips)}
