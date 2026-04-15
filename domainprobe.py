@@ -5,6 +5,7 @@ Advanced DNS & Domain Intelligence Platform
 Tier 2 DNS / Domain Technical Support
 """
 
+import argparse
 import sys, os
 
 # ── Dependency pre-check ──────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ from rich          import box
 
 from modules.display      import console, banner, section, ok, warn, err, info, press_enter
 from modules              import session
+from modules.audit_engine import actionable_audit, render_audit_text, run_actionable_audit, save_audit_report, should_fail
 from modules.dns_core     import dns_lookup, propagation_check, ns_consistency_check, cname_ttl_analyzer
 from modules.whois_rdap   import whois_lookup, rdap_lookup, epp_decoder
 from modules.email_suite  import spf_analyzer, dmarc_inspector, dkim_prober, mx_validator, rbl_checker
@@ -129,6 +131,7 @@ MENU_ITEMS = [
     ("24", "Bulk Domain Lookup",                      bulk_lookup),
     ("25", "Diff Mode  (Before / After)",             diff_mode),
     ("26", "Export Session Results",                  export_menu),
+    ("27", "★  Actionable Audit Report",              actionable_audit),
     ("0",  "Exit",                                    None),
 ]
 
@@ -150,8 +153,69 @@ def print_menu():
             console.print(f"   [cyan]{kpad}[/cyan]{star}  {label}")
     console.print()
 
+# ── CLI mode ──────────────────────────────────────────────────────────────────
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="DomainProbe v2.0 — DNS, mail, and domain diagnostics"
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    audit_parser = subparsers.add_parser(
+        "audit",
+        help="Run a structured actionable audit for a domain",
+    )
+    audit_parser.add_argument("domain", help="Domain name to audit")
+    audit_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format for stdout or --output",
+    )
+    audit_parser.add_argument(
+        "--output",
+        help="Write the audit report to a file instead of stdout",
+    )
+    audit_parser.add_argument(
+        "--fail-on",
+        choices=["never", "critical", "high", "medium", "low"],
+        default="never",
+        help="Exit with code 2 if a finding at or above this severity is present",
+    )
+
+    return parser
+
+
+def run_cli(argv):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command is None:
+        return None
+
+    if args.command == "audit":
+        audit = run_actionable_audit(args.domain)
+        if args.output:
+            save_audit_report(audit, args.output, args.format)
+            print(f"Saved {args.format} audit report to {args.output}")
+        elif args.format == "json":
+            import json
+            print(json.dumps(audit, indent=2, default=str))
+        else:
+            print(render_audit_text(audit))
+
+        return 2 if should_fail(audit["findings"], args.fail_on) else 0
+
+    return 0
+
+
 # ── Main loop ─────────────────────────────────────────────────────────────────
-def main():
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv:
+        cli_code = run_cli(argv)
+        if cli_code is not None:
+            return cli_code
+
     banner()
 
     while True:
@@ -163,7 +227,7 @@ def main():
                 if Confirm.ask(f"  [cyan]Export {session.count()} session result(s) before exiting?[/cyan]", default=False):
                     export_menu()
             console.print("\n  [dim]DomainProbe v2.0 — goodbye.[/dim]\n")
-            break
+            return 0
 
         fn = DISPATCH.get(choice)
         if fn is None:
@@ -183,4 +247,4 @@ def main():
         press_enter()
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
