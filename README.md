@@ -2,6 +2,8 @@
 
 Operator-focused DNS, web, mail, and registrar diagnostics for support triage and domain incident work.
 
+Homepage: `https://owusuboateng.me`
+
 ## What It Does
 
 Owusu DomainProbe is a terminal toolkit for:

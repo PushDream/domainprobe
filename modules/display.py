@@ -5,7 +5,7 @@ from rich.panel   import Panel
 from rich.prompt  import Prompt
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .meta import APP_NAME, APP_SUBTITLE, APP_TAGLINE, APP_VERSION
+from .meta import APP_NAME, APP_SUBTITLE, APP_TAGLINE, APP_VERSION, APP_WEBSITE
 
 console = Console()
 
@@ -14,7 +14,8 @@ def banner():
     console.print(Panel.fit(
         f"[bold cyan]{APP_NAME}[/bold cyan] [yellow]v{APP_VERSION}[/yellow]\n"
         f"[white]{APP_TAGLINE}[/white]\n"
-        f"[dim]{APP_SUBTITLE}[/dim]",
+        f"[dim]{APP_SUBTITLE}[/dim]\n"
+        f"[dim]{APP_WEBSITE}[/dim]",
         border_style="cyan",
         padding=(0, 2),
     ))
