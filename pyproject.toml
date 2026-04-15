@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "domainprobe"
+version = "3.0"
+description = "Operator-focused DNS, web, mail, and registrar diagnostics"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Owusu Boateng", url = "https://owusuboateng.me" }]
+requires-python = ">=3.9"
+dependencies = [
+    "dnspython>=2.4.0",
+    "python-whois>=0.9.0",
+    "requests>=2.31.0",
+    "rich>=13.0.0",
+]
+keywords = ["dns", "domain", "diagnostics", "whois", "spf", "dmarc", "ssl", "networking"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: Name Service (DNS)",
+    "Topic :: System :: Networking",
+]
+
+[project.scripts]
+domainprobe = "domainprobe:main"
+
+[project.urls]
+Homepage = "https://owusuboateng.me"
+Repository = "https://github.com/owusuboateng/domainprobe"

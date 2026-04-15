@@ -26,12 +26,12 @@ from modules.meta         import APP_NAME, APP_TAGLINE, APP_VERSION, app_label
 from modules              import session
 from modules.audit_engine import actionable_audit, render_audit_text, run_actionable_audit, save_audit_report, should_fail
 from modules.diagnose     import diagnose_domain, diagnose_website, diagnose_email, render_domain_diagnosis_text, render_website_diagnosis_text, render_email_diagnosis_text, run_domain_diagnosis, run_website_diagnosis, run_email_diagnosis, save_diagnosis_report
-from modules.dns_core     import dns_lookup, propagation_check, ns_consistency_check, cname_ttl_analyzer
+from modules.dns_core     import dns_lookup, propagation_check, ns_consistency_check, cname_ttl_analyzer, subdomain_enum
 from modules.whois_rdap   import whois_lookup, rdap_lookup, epp_decoder
 from modules.email_suite  import spf_analyzer, dmarc_inspector, dkim_prober, mx_validator, rbl_checker
-from modules.security     import ssl_inspector, dnssec_validator, doh_probe, caa_analyzer
+from modules.security     import ssl_inspector, dnssec_validator, doh_probe, caa_analyzer, zone_transfer_test
 from modules.diagnostics  import dns_health_score, redirect_chain, transfer_eligibility, expiry_calendar
-from modules.connectivity import connectivity_check
+from modules.connectivity import connectivity_check, asn_lookup
 from modules.reporter     import ticket_summary, diff_mode, live_watcher
 
 # ── Bulk lookup ───────────────────────────────────────────────────────────────
@@ -95,28 +95,31 @@ ADVANCED_MENU_ITEMS = [
     ("2",  "NS Consistency & SOA Validation",      ns_consistency_check),
     ("3",  "Propagation Check",                    propagation_check),
     ("4",  "CNAME Conflict & TTL Analyzer",        cname_ttl_analyzer),
+    ("5",  "Subdomain Enumeration",                subdomain_enum),
 
     (None, "DOMAIN LIFECYCLE", None),
-    ("5",  "WHOIS Lookup",                         whois_lookup),
-    ("6",  "RDAP Lookup",                          rdap_lookup),
-    ("7",  "EPP / IANA Status Decoder",            epp_decoder),
-    ("8",  "Expiry Calendar",                      expiry_calendar),
+    ("6",  "WHOIS Lookup",                         whois_lookup),
+    ("7",  "RDAP Lookup",                          rdap_lookup),
+    ("8",  "EPP / IANA Status Decoder",            epp_decoder),
+    ("9",  "Expiry Calendar",                      expiry_calendar),
 
     (None, "EMAIL & SECURITY", None),
-    ("9",  "SPF Analyzer",                         spf_analyzer),
-    ("10", "DMARC Inspector",                      dmarc_inspector),
-    ("11", "DKIM Selector Prober",                 dkim_prober),
-    ("12", "MX Validator + Port Check",            mx_validator),
-    ("13", "Blacklist / RBL Checker",              rbl_checker),
-    ("14", "SSL / TLS Certificate Inspector",      ssl_inspector),
-    ("15", "DNSSEC Validator",                     dnssec_validator),
-    ("16", "DNS-over-HTTPS Probe",                 doh_probe),
-    ("17", "CAA Record Analyzer",                  caa_analyzer),
+    ("10", "SPF Analyzer",                         spf_analyzer),
+    ("11", "DMARC Inspector",                      dmarc_inspector),
+    ("12", "DKIM Selector Prober",                 dkim_prober),
+    ("13", "MX Validator + Port Check",            mx_validator),
+    ("14", "Blacklist / RBL Checker",              rbl_checker),
+    ("15", "SSL / TLS Certificate Inspector",      ssl_inspector),
+    ("16", "DNSSEC Validator",                     dnssec_validator),
+    ("17", "DNS-over-HTTPS Probe",                 doh_probe),
+    ("18", "CAA Record Analyzer",                  caa_analyzer),
+    ("19", "Zone Transfer Test (AXFR)",            zone_transfer_test),
 
     (None, "WEB / NETWORK", None),
-    ("18", "Redirect Chain Follower",              redirect_chain),
-    ("19", "Network Connectivity",                 connectivity_check),
-    ("20", "Live Propagation Watcher",             live_watcher),
+    ("20", "Redirect Chain Follower",              redirect_chain),
+    ("21", "Network Connectivity",                 connectivity_check),
+    ("22", "ASN / BGP Lookup",                     asn_lookup),
+    ("23", "Live Propagation Watcher",             live_watcher),
     ("0",  "Back",                                 None),
 ]
 
@@ -204,6 +207,11 @@ def print_main_menu():
 def build_parser():
     parser = argparse.ArgumentParser(
         description=f"{app_label()} — {APP_TAGLINE}"
+    )
+    parser.add_argument(
+        "--version", "-V",
+        action="version",
+        version=f"{APP_NAME} v{APP_VERSION}",
     )
     subparsers = parser.add_subparsers(dest="command")
 

@@ -4,13 +4,15 @@ Connectivity
 • Ping — ICMP reachability test
 • Port scan — 10 essential ports in parallel
 • Traceroute — Windows (tracert) & Linux/Mac (traceroute) compatible
+• ASN / BGP lookup — carrier, org, prefix, country via ipinfo.io
 """
 
 import socket, subprocess, platform, concurrent.futures
+import requests
 from rich.table import Table
 from rich import box
 from rich.prompt import Confirm
-from .display import console, section, ok, warn, err, info, get_domain, Spinner
+from .display import console, section, subsection, ok, warn, err, info, get_domain, Spinner
 from . import session
 
 PORTS = [
@@ -42,7 +44,7 @@ def connectivity_check(domain=None):
         result_data["ip"] = "unresolvable"
 
     # ── Ping ──
-    console.print("\n  [bold]Ping (4 packets)[/bold]")
+    subsection("Ping (4 packets)")
     flag = "-n" if platform.system() == "Windows" else "-c"
     try:
         res = subprocess.run(["ping", flag, "4", ip],
@@ -65,7 +67,7 @@ def connectivity_check(domain=None):
         err(f"Ping error: {e}")
 
     # ── Port scan ──
-    console.print("\n  [bold]Port Scan[/bold]")
+    subsection("Port Scan")
 
     def check_port(args):
         port, svc = args
@@ -109,3 +111,75 @@ def connectivity_check(domain=None):
 
     session.store("connectivity", domain, result_data)
     return result_data
+
+
+# ── ASN / BGP Lookup ──────────────────────────────────────────────────────────
+def asn_lookup(target=None):
+    if target is None:
+        target = get_domain("Enter domain or IP")
+    section(f"ASN / BGP Lookup — {target}")
+
+    # Resolve to IP if domain given
+    ip = target
+    if not target.replace(".", "").isdigit():
+        try:
+            ip = socket.gethostbyname(target)
+            ok(f"Resolved: [bold]{target}[/bold] → [bold]{ip}[/bold]")
+        except socket.gaierror:
+            err(f"Could not resolve {target}"); return None
+
+    info(f"Querying ASN data for [bold]{ip}[/bold]…")
+
+    try:
+        resp = requests.get(
+            f"https://ipinfo.io/{ip}/json",
+            timeout=8,
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code != 200:
+            err(f"ipinfo.io returned HTTP {resp.status_code}"); return None
+        data = resp.json()
+    except Exception as e:
+        err(f"ASN lookup failed: {e}"); return None
+
+    from rich.table import Table
+    from rich import box
+
+    table = Table(box=box.ROUNDED, border_style="cyan", show_header=False)
+    table.add_column("Field", style="bold yellow", width=18)
+    table.add_column("Value", style="white")
+
+    asn_raw  = data.get("org", "")
+    asn_num  = asn_raw.split()[0] if asn_raw else "–"
+    asn_name = " ".join(asn_raw.split()[1:]) if asn_raw and " " in asn_raw else asn_raw
+
+    fields = [
+        ("IP",          data.get("ip", ip)),
+        ("Hostname",    data.get("hostname", "–")),
+        ("ASN",         asn_num),
+        ("Organisation",asn_name or "–"),
+        ("City",        data.get("city", "–")),
+        ("Region",      data.get("region", "–")),
+        ("Country",     data.get("country", "–")),
+        ("Prefix",      data.get("prefix") or data.get("network", "–")),
+        ("Timezone",    data.get("timezone", "–")),
+    ]
+    for field, value in fields:
+        if value and value != "–":
+            table.add_row(field, str(value))
+
+    console.print(table)
+    console.print()
+
+    if "bogon" in data:
+        warn("Bogon IP — private/reserved address space, not routable on the public internet.")
+    elif asn_num and asn_num.startswith("AS"):
+        ok(f"Routed via {asn_num} ({asn_name})")
+
+    result = {
+        "ip": ip, "asn": asn_num, "org": asn_name,
+        "country": data.get("country"), "city": data.get("city"),
+        "prefix": data.get("prefix") or data.get("network"),
+    }
+    session.store("asn", target, result)
+    return result

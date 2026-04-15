@@ -21,8 +21,12 @@ def banner():
     ))
 
 def section(title):
-    console.print(f"\n[bold cyan]┌─ {title}[/bold cyan]")
-    console.rule(style="dim cyan")
+    console.print()
+    console.rule(f"[bold cyan] {title} [/bold cyan]", style="cyan")
+
+
+def subsection(title):
+    console.print(f"\n  [bold dim]▸ {title}[/bold dim]")
 
 def ok(msg):   console.print(f"  [green]✓[/green]  {msg}")
 def warn(msg): console.print(f"  [yellow]⚠[/yellow]  {msg}")

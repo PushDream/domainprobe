@@ -5,10 +5,12 @@ Security Module
 • DNSSEC validator — DS, DNSKEY, RRSIG, validation test
 • DNS-over-HTTPS (DoH) probe — Cloudflare, Google, Quad9, NextDNS
 • CAA record analyzer
+• Zone transfer test (AXFR) — tests all authoritative NS
 """
 
 import ssl, socket, datetime, re, concurrent.futures
 import requests
+import dns.query, dns.zone, dns.exception
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
@@ -273,3 +275,92 @@ def caa_analyzer(domain=None):
 
     session.store("caa", domain, {"found": True, "records": cas})
     return cas
+
+
+# ── Zone Transfer Test (AXFR) ─────────────────────────────────────────────────
+def zone_transfer_test(domain=None):
+    if domain is None: domain = get_domain()
+    section(f"Zone Transfer Test (AXFR) — {domain}")
+
+    ns_vals, _, ns_status = resolve_safe(domain, "NS")
+    if ns_status != "ok" or not ns_vals:
+        err(f"Could not retrieve NS records: {ns_status}"); return None
+
+    info(f"Testing AXFR against {len(ns_vals)} nameserver(s)…")
+    info("Misconfigured NS servers that allow zone transfers expose your entire DNS zone.")
+
+    results = {}
+    vulnerable = []
+
+    def test_ns(ns_raw):
+        ns = ns_raw.rstrip(".")
+        try:
+            ip = socket.gethostbyname(ns)
+        except Exception:
+            return ns, None, "unresolvable", []
+
+        try:
+            zone = dns.zone.from_xfr(dns.query.xfr(ip, domain, timeout=8, lifetime=10))
+            records = []
+            for name, node in zone.nodes.items():
+                for rdataset in node.rdatasets:
+                    for rdata in rdataset:
+                        records.append(f"{name}.{domain} {rdataset.ttl} {rdataset.rdtype} {rdata}")
+            return ns, ip, "VULNERABLE", records
+        except dns.exception.FormError:
+            return ns, ip, "refused", []
+        except (ConnectionRefusedError, OSError):
+            return ns, ip, "refused", []
+        except Exception as e:
+            msg = str(e).lower()
+            if "refused" in msg or "servfail" in msg or "notimp" in msg:
+                return ns, ip, "refused", []
+            return ns, ip, f"error:{str(e)[:40]}", []
+
+    with Spinner("Testing zone transfers"):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            raw = list(ex.map(test_ns, ns_vals))
+
+    table = Table(box=box.ROUNDED, border_style="cyan", header_style="bold white")
+    table.add_column("Nameserver",   style="bold yellow")
+    table.add_column("IP",           style="white",    width=16)
+    table.add_column("AXFR Result",  width=22)
+    table.add_column("Records Leaked", style="dim",   width=16)
+
+    for ns, ip, status, records in raw:
+        if status == "VULNERABLE":
+            vulnerable.append(ns)
+            table.add_row(
+                ns,
+                ip or "–",
+                "[bold red]⚠  ZONE TRANSFER ALLOWED[/bold red]",
+                f"[red]{len(records)} record(s)[/red]",
+            )
+        elif status == "refused":
+            table.add_row(ns, ip or "–", "[green]✓  Refused (secure)[/green]", "–")
+        elif status == "unresolvable":
+            table.add_row(ns, "[red]Unresolvable[/red]", "[dim]skipped[/dim]", "–")
+        else:
+            table.add_row(ns, ip or "–", f"[dim]{status}[/dim]", "–")
+        results[ns] = {"ip": ip, "status": status,
+                       "record_count": len(records) if status == "VULNERABLE" else 0}
+
+    console.print(table)
+    console.print()
+
+    if vulnerable:
+        err(f"[bold]CRITICAL: Zone transfer allowed on {len(vulnerable)} NS:[/bold] {', '.join(vulnerable)}")
+        warn("Attackers can enumerate your entire DNS zone — all subdomains, IPs, mail servers.")
+        info("Fix: restrict AXFR to trusted secondary NS IPs only (ACL on your DNS server).")
+        info("  BIND:    allow-transfer { trusted_secondary; };")
+        info("  PowerDNS: allow-axfr-ips=<trusted IP>")
+        for ns, ip, status, records in raw:
+            if status == "VULNERABLE" and records:
+                console.print(f"\n  [dim]Sample leaked records from {ns} (first 10):[/dim]")
+                for r in records[:10]:
+                    console.print(f"    [dim]{r[:100]}[/dim]")
+    else:
+        ok("All nameservers correctly refuse zone transfers.")
+
+    session.store("zone_transfer", domain, {"vulnerable": vulnerable, "results": results})
+    return {"vulnerable": vulnerable, "results": results}

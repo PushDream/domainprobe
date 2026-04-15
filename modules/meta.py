@@ -2,7 +2,7 @@
 
 APP_NAME = "Owusu DomainProbe"
 APP_SLUG = "domainprobe"
-APP_VERSION = "2.0"
+APP_VERSION = "3.0"
 APP_OWNER = "Owusu"
 APP_WEBSITE = "owusuboateng.me"
 APP_TAGLINE = "Operator-focused DNS, web, mail, and registrar diagnostics"

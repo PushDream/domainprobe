@@ -7,6 +7,7 @@ DNS Core
 • Zone delegation validator (registrar NS vs auth NS)
 • CNAME conflict detector + TTL anomaly analyzer
 • Wildcard DNS detector
+• Subdomain enumeration — 110-entry wordlist, parallel resolution
 """
 
 import socket, concurrent.futures
@@ -62,8 +63,8 @@ def dns_lookup(domain=None, record_types=None, resolver_ip=None, silent=False):
 
     if not silent:
         section(f"DNS Record Lookup — {domain}")
-        if resolver_ip:
-            info(f"Using resolver: {resolver_ip}")
+    if resolver_ip and not silent:
+        info(f"Using resolver: {resolver_ip}")
 
     table = Table(box=box.ROUNDED, border_style="cyan", header_style="bold white")
     table.add_column("Type",  style="bold yellow", width=9)
@@ -314,3 +315,90 @@ def cname_ttl_analyzer(domain=None):
 
     session.store("cname_ttl", domain, {"issues": issues, "ttl": ttl_data})
     return {"issues": issues, "ttl": ttl_data}
+
+
+# ── 5. Subdomain Enumeration ──────────────────────────────────────────────────
+_SUBDOMAIN_WORDLIST = [
+    # Infrastructure
+    "www","www2","www3","mail","mail2","smtp","smtp2","pop","pop3","imap",
+    "webmail","mx","mx1","mx2","ns","ns1","ns2","ns3","ns4","ftp","sftp",
+    # Admin & management
+    "admin","administrator","portal","cp","cpanel","whm","plesk","panel",
+    "dashboard","manage","management","console","control",
+    # Dev / deploy
+    "dev","dev2","development","staging","stage","uat","qa","test","testing",
+    "beta","alpha","demo","sandbox","preview","pre","preprod","prod",
+    # Apps & services
+    "api","api2","app","apps","mobile","m","wap","cdn","static","assets",
+    "media","img","images","files","upload","download","dl","s3","store",
+    # Auth & security
+    "auth","login","sso","identity","idp","oauth","vpn","remote","citrix",
+    "secure","ssl","pgp",
+    # Communication
+    "chat","slack","meet","conference","calendar","support","help","helpdesk",
+    "kb","wiki","docs","documentation","forum","community","blog",
+    # Monitoring & ops
+    "status","monitor","metrics","grafana","prometheus","kibana","elastic",
+    "logs","log","nagios","zabbix","alertmanager","ops",
+    # E-commerce / web
+    "shop","store","cart","checkout","payment","pay","invoice","billing",
+    # Misc common
+    "intranet","internal","extranet","legacy","old","new","v1","v2","v3",
+    "git","gitlab","github","jira","confluence","sonar","jenkins","ci","cd",
+]
+
+def subdomain_enum(domain=None):
+    if domain is None:
+        domain = get_domain()
+
+    section(f"Subdomain Enumeration — {domain}")
+    info(f"Probing {len(_SUBDOMAIN_WORDLIST)} common subdomains in parallel…")
+
+    # Detect wildcard first — if *.domain resolves we can't trust positive results
+    probe_fqdn = f"nxtest-wildcard-{id(domain)}.{domain}"
+    wc_vals, _, wc_status = resolve_safe(probe_fqdn, "A")
+    wildcard = wc_status == "ok" and bool(wc_vals)
+    if wildcard:
+        warn(f"Wildcard DNS detected — *.{domain} resolves. Results may include false positives.")
+
+    def check(sub):
+        fqdn = f"{sub}.{domain}"
+        a_vals,    _, a_status    = resolve_safe(fqdn, "A",    timeout=4)
+        cname_vals,_, cname_status = resolve_safe(fqdn, "CNAME",timeout=4)
+        if a_status == "ok" and a_vals:
+            return sub, fqdn, a_vals, "A", a_vals[0]
+        if cname_status == "ok" and cname_vals:
+            return sub, fqdn, cname_vals, "CNAME", cname_vals[0]
+        return sub, fqdn, [], None, None
+
+    with Spinner(f"Enumerating subdomains of {domain}"):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+            raw = list(ex.map(check, _SUBDOMAIN_WORDLIST))
+
+    found = [(sub, fqdn, vals, rtype, first) for sub, fqdn, vals, rtype, first in raw if rtype]
+
+    if not found:
+        warn("No subdomains discovered from the wordlist.")
+        info("This does not mean no subdomains exist — only that none matched this wordlist.")
+        session.store("subdomain_enum", domain, {"found": [], "wildcard": wildcard})
+        return []
+
+    table = Table(box=box.ROUNDED, border_style="cyan", header_style="bold white")
+    table.add_column("Subdomain",  style="bold yellow")
+    table.add_column("Type",       style="cyan",  width=7)
+    table.add_column("Resolves To",style="white")
+
+    for sub, fqdn, vals, rtype, first in sorted(found, key=lambda x: x[0]):
+        table.add_row(fqdn, rtype, first)
+
+    console.print(table)
+    console.print()
+    ok(f"Discovered [bold]{len(found)}[/bold] subdomain(s) from {len(_SUBDOMAIN_WORDLIST)}-entry wordlist.")
+
+    if wildcard:
+        warn("Wildcard active — verify each result manually before acting on it.")
+
+    result_data = [{"subdomain": fqdn, "type": rtype, "value": first}
+                   for _, fqdn, _, rtype, first in found]
+    session.store("subdomain_enum", domain, {"found": result_data, "wildcard": wildcard})
+    return result_data
