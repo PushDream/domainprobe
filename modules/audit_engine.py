@@ -518,11 +518,18 @@ def actionable_audit(domain=None):
 
     timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     if Confirm.ask("\n  [cyan]Save audit report to file?[/cyan]", default=True):
+        from .display import err, info as _info
         output_format = Prompt.ask("  [cyan]Format[/cyan]", choices=["txt", "json"], default="txt")
-        default_name = f"audit_{domain}_{timestamp}.{output_format}"
+        default_name = str(Path.home() / f"audit_{domain}_{timestamp}.{output_format}")
         filename = Prompt.ask("  [cyan]Filename[/cyan]", default=default_name)
-        save_audit_report(audit, filename, "text" if output_format == "txt" else "json")
-        ok(f"Saved → [bold]{filename}[/bold]")
+        try:
+            save_audit_report(audit, filename, "text" if output_format == "txt" else "json")
+            ok(f"Saved → [bold]{filename}[/bold]")
+        except PermissionError:
+            err(f"Permission denied: cannot write to [bold]{filename}[/bold]")
+            _info("Try entering a path you own, e.g. your Desktop or home folder.")
+        except OSError as e:
+            err(f"Could not write file: {e}")
 
     if audit["summary"]["finding_count"] == 0:
         ok("No actionable findings detected.")

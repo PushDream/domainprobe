@@ -25,10 +25,14 @@ def get_all() -> list:
     return list(_results)
 
 def export_json(filename: str):
+    from pathlib import Path
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(_results, f, indent=2, default=str)
 
 def export_csv(filename: str):
+    from pathlib import Path
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
     with open(filename, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["timestamp", "module", "domain", "data"])

@@ -69,6 +69,7 @@ def _top_finding(findings):
 
 def _save_report(report, filename, output_format, renderer):
     path = Path(filename)
+    path.parent.mkdir(parents=True, exist_ok=True)
     if output_format == "json":
         path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     else:
