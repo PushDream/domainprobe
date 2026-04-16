@@ -29,7 +29,7 @@ DomainProbe is a terminal toolkit that puts every domain diagnostic you need in 
 ## Install
 
 ```bash
-git clone https://github.com/youruser/domainprobe.git
+git clone https://github.com/PushDream/domainprobe.git
 cd domainprobe
 pip install -r requirements.txt
 ```
